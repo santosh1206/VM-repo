@@ -3,7 +3,7 @@ trigger:
   - main # Trigger the pipeline on changes to the 'main' branch
 
 pool:
-  Name: 'Default' # Use a Microsoft-hosted agent (or your self-hosted agent)
+  Name: 'myazurevm' # Use a Microsoft-hosted agent (or your self-hosted agent)
 
 variables:
   # Name of your Azure DevOps Service Connection
