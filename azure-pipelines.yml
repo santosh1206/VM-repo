@@ -1,19 +1,109 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
+# azure-pipelines.yml
 trigger:
-- main
+  - main # Trigger the pipeline on changes to the 'main' branch
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest' # Use a Microsoft-hosted agent (or your self-hosted agent)
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+variables:
+  # Name of your Azure DevOps Service Connection
+  azureServiceConnection: 'YourAzureRMServiceConnection'
+  
+  # Terraform backend storage details (must exist in Azure before pipeline runs)
+  backendResourceGroupName: 'tfstate-rg'
+  backendStorageAccountName: 'tfstateaccount0123' # Must match the one in main.tf
+  backendContainerName: 'tfstate'
+  backendKey: 'terraform.tfstate'
 
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+  # Variables for your Azure Resource Group
+  # These can be overridden by variable groups or at runtime
+  resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run
+  resourceGroupLocation: 'East US'
+  environmentTag: 'dev'
+
+stages:
+- stage: TerraformPlan
+  displayName: 'Terraform Plan'
+  jobs:
+  - job: Plan
+    displayName: 'Run Terraform Plan'
+    steps:
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: 'latest' # Or a specific version like '1.5.7'
+
+    - task: AzureCLI@2
+      displayName: 'Set up Azure Backend (if not already done)'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az group create --name $(backendResourceGroupName) --location "$(resourceGroupLocation)" --output none --only-show-errors || true
+          az storage account create --name $(backendStorageAccountName) --resource-group $(backendResourceGroupName) --sku Standard_LRS --encryption-services blob --output none --only-show-errors || true
+          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --output none --only-show-errors || true
+      # This step attempts to create the backend resources if they don't exist.
+      # '|| true' allows the step to succeed even if the resource already exists (e.g., 'already exists' error).
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Init'
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: 'terraform' # Path to your Terraform files
+        backendServiceArm: '$(azureServiceConnection)'
+        backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
+        backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
+        backendAzureRmContainerName: '$(backendContainerName)'
+        backendAzureRmKey: '$(backendKey)'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Plan'
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: 'terraform'
+        environmentServiceNameAzureRM: '$(azureServiceConnection)'
+        commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+
+    - publish: $(System.DefaultWorkingDirectory)/tfplan.out
+      artifact: tfplan
+
+- stage: TerraformApply
+  displayName: 'Terraform Apply'
+  dependsOn: TerraformPlan # This stage runs only after the Plan stage
+  condition: succeeded() # Only run if the previous stage succeeded
+  jobs:
+  - job: Apply
+    displayName: 'Apply Terraform Changes'
+    steps:
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: 'latest'
+
+    - download: current
+      artifact: tfplan
+      # Downloads the tfplan.out file from the previous stage
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Init (for apply stage)'
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: 'terraform'
+        backendServiceArm: '$(azureServiceConnection)'
+        backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
+        backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
+        backendAzureRmContainerName: '$(backendContainerName)'
+        backendAzureRmKey: '$(backendKey)'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Apply'
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: 'terraform'
+        environmentServiceNameAzureRM: '$(azureServiceConnection)'
+        commandOptions: '$(System.DefaultWorkingDirectory)/tfplan.out' # Apply the planned changes

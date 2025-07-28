@@ -1,10 +1,16 @@
-variable "resource_group_location" {
-  default     = "eastus"
-  description = "Location of the resource group."
+variable "resource_group_name" {
+  description = "The name of the Azure Resource Group to create."
+  type        = string
 }
 
-variable "prefix" {
+variable "location" {
+  description = "The Azure region where the resource group will be created."
   type        = string
-  default     = "win-vm-iis"
-  description = "Prefix of the resource name"
+  default     = "centralindia" # Default location, can be overridden by pipeline variables
+}
+
+variable "environment" {
+  description = "The environment for the resource group (e.g., dev, prod)."
+  type        = string
+  default     = "dev" # Default environment, can be overridden
 }
