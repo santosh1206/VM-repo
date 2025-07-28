@@ -7,18 +7,18 @@ pool:
 
 variables:
   # Name of your Azure DevOps Service Connection
-  azureServiceConnection: 'YourAzureRMServiceConnection'
+  azureServiceConnection: 'devopstoazure'
   
   # Terraform backend storage details (must exist in Azure before pipeline runs)
   backendResourceGroupName: 'tfstate-rg'
-  backendStorageAccountName: 'tfstateaccount0123' # Must match the one in main.tf
+  backendStorageAccountName: 'tfstatestoragefree' # Must match the one in main.tf
   backendContainerName: 'tfstate'
   backendKey: 'terraform.tfstate'
 
   # Variables for your Azure Resource Group
   # These can be overridden by variable groups or at runtime
   resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run
-  resourceGroupLocation: 'East US'
+  resourceGroupLocation: 'centralindia'
   environmentTag: 'dev'
 
 stages:
