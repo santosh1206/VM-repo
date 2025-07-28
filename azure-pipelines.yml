@@ -51,7 +51,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'init'
-        workingDirectory: 'terraform' # Path to your Terraform files
+        workingDirectory: 'VM-REPO' # Path to your Terraform files
         backendServiceArm: '$(azureServiceConnection)'
         backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
         backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
@@ -63,7 +63,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'plan'
-        workingDirectory: 'terraform'
+        workingDirectory: 'VM-REPO'
         environmentServiceNameAzureRM: '$(azureServiceConnection)'
         commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
 
@@ -92,7 +92,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'init'
-        workingDirectory: 'terraform'
+        workingDirectory: 'VM-REPO'
         backendServiceArm: '$(azureServiceConnection)'
         backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
         backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
@@ -104,6 +104,6 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'apply'
-        workingDirectory: 'terraform'
+        workingDirectory: 'VM-REPO'
         environmentServiceNameAzureRM: '$(azureServiceConnection)'
         commandOptions: '$(System.DefaultWorkingDirectory)/tfplan.out' # Apply the planned changes
