@@ -98,6 +98,18 @@ stages:
         backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
         backendAzureRmContainerName: '$(backendContainerName)'
         backendAzureRmKey: '$(backendKey)'
+   
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform Plan (for apply stage)'
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)'
+        environmentServiceNameAzureRM: '$(azureServiceConnection)'
+        commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+
+    - publish: $(System.DefaultWorkingDirectory)/tfplan.out
+      artifact: tfplan
 
     - task: TerraformTaskV4@4
       displayName: 'Terraform Apply'
