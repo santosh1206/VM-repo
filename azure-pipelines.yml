@@ -28,7 +28,7 @@ stages:
   - job: Plan
     displayName: 'Run Terraform Plan'
     steps:
-    - task: TerraformInstaller@0
+    - task: TerraformInstaller@1
       displayName: 'Install Terraform'
       inputs:
         terraformVersion: 'latest' # Or a specific version like '1.5.7'
@@ -78,7 +78,7 @@ stages:
   - job: Apply
     displayName: 'Apply Terraform Changes'
     steps:
-    - task: TerraformInstaller@0
+    - task: TerraformInstaller@1
       displayName: 'Install Terraform'
       inputs:
         terraformVersion: 'latest'
