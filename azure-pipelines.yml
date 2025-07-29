@@ -108,8 +108,8 @@ stages:
         environmentServiceNameAzureRM: '$(azureServiceConnection)'
         commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
 
-    - publish: $(System.DefaultWorkingDirectory)/tfplan.out
-      artifact: tfplan
+    #- publish: $(System.DefaultWorkingDirectory)/tfplan.out
+      #artifact: tfplan
 
     - task: TerraformTaskV4@4
       displayName: 'Terraform Apply'
