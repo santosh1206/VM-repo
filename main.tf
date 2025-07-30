@@ -35,7 +35,7 @@ resource "azurerm_resource_group" "example1" {
 }
 
 # Create an Azure Resource Group 2
-resource "azurerm_resource_group" "example 2" {
+resource "azurerm_resource_group" "example2" {
   name     = "${random_pet.prefix.id}-rg"
   location = var.location
   tags = {
