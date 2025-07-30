@@ -3,23 +3,29 @@ trigger:
   - main # Trigger the pipeline on changes to the 'main' branch
 
 pool:
-  name: 'myazurevm' # Use a Microsoft-hosted agent (or your self-hosted agent)
+  name: 'myazurevm' # Use a self-hosted agent pool named 'myazurevm'
+  # If using a Microsoft-hosted agent, use:
+  # vmImage: 'ubuntu-latest' # or 'windows-latest'
 
 variables:
   # Name of your Azure DevOps Service Connection
   azureServiceConnection: 'devopstoazure'
   
   # Terraform backend storage details (must exist in Azure before pipeline runs)
+  # IMPORTANT: Ensure these resources (RG, Storage Account, Container) are pre-created
+  # and your service connection has appropriate permissions.
   backendResourceGroupName: 'tfstate-rg'
-  backendStorageAccountName: 'tfstatestoragefree' # Must match the one in main.tf
+  backendStorageAccountName: 'tfstatestoragefree'
   backendContainerName: 'tfstate'
   backendKey: 'terraform.tfstate'
 
   # Variables for your Azure Resource Group
-  # These can be overridden by variable groups or at runtime
-  resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run
+  # For persistent environments (Dev, Prod), consider using fixed names here
+  # or environment-specific variable groups rather than dynamic names like Build.BuildId.
+  # For this example, if you want a new RG for each build, keep this.
+  resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run (e.g., for ephemeral testing)
   resourceGroupLocation: 'centralindia'
-  environmentTag: 'dev'
+  environmentTag: 'dev' # Example tag for your resources
 
 stages:
 - stage: TerraformPlan
@@ -33,25 +39,27 @@ stages:
       inputs:
         terraformVersion: 'latest' # Or a specific version like '1.5.7'
 
-    - task: AzureCLI@2
-      displayName: 'Set up Azure Backend (if not already done)'
-      inputs:
-        azureSubscription: '$(azureServiceConnection)'
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          az group create --name $(backendResourceGroupName) --location "$(resourceGroupLocation)" --output none --only-show-errors || true
-          az storage account create --name $(backendStorageAccountName) --resource-group $(backendResourceGroupName) --sku Standard_LRS --encryption-services blob --output none --only-show-errors || true
-          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --output none --only-show-errors || true
-      # This step attempts to create the backend resources if they don't exist.
-      # '|| true' allows the step to succeed even if the resource already exists (e.g., 'already exists' error).
+    # This step is commented out as backend resources are typically pre-created.
+    # If you still want to include it, ensure your service connection has permissions
+    # to create resource groups, storage accounts, and containers.
+    # - task: AzureCLI@2
+    #   displayName: 'Set up Azure Backend (if not already done)'
+    #   inputs:
+    #     azureSubscription: '$(azureServiceConnection)'
+    #     scriptType: 'bash'
+    #     scriptLocation: 'inlineScript'
+    #     inlineScript: |
+    #       az group create --name $(backendResourceGroupName) --location "$(resourceGroupLocation)" --output none --only-show-errors || true
+    #       az storage account create --name $(backendStorageAccountName) --resource-group $(backendResourceGroupName) --sku Standard_LRS --encryption-services blob --output none --only-show-errors || true
+    #       az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --output none --only-show-errors || true
+    #   # '|| true' allows the step to succeed even if the resource already exists (e.g., 'already exists' error).
 
     - task: TerraformTaskV4@4
       displayName: 'Terraform Init'
       inputs:
         provider: 'azurerm'
         command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)' # Path to your Terraform files
+        workingDirectory: '$(System.DefaultWorkingDirectory)' # Path to your Terraform files (e.g., where main.tf is)
         backendServiceArm: '$(azureServiceConnection)'
         backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
         backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
@@ -65,64 +73,74 @@ stages:
         command: 'plan'
         workingDirectory: '$(System.DefaultWorkingDirectory)'
         environmentServiceNameAzureRM: '$(azureServiceConnection)'
+        # Pass variables to Terraform using -var flags
         commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
 
+    # Publish the generated plan file as an artifact
     - publish: $(System.DefaultWorkingDirectory)/tfplan.out
       artifact: tfplan
+      displayName: 'Publish Terraform Plan Artifact'
 
 - stage: TerraformApply
   displayName: 'Terraform Apply'
   dependsOn: TerraformPlan # This stage runs only after the Plan stage
-  condition: succeeded() # Only run if the previous stage succeeded
-  # Link to the 'Production' Environment.
-  # This is where your production approval will be enforced.
-  #environment: 'Dev'
+  condition: succeeded('TerraformPlan') # Only run if the previous stage (TerraformPlan) succeeded
+  
+  # The 'environment' keyword links this stage to an Azure DevOps Environment.
+  # This is where you configure pre-deployment approvals and checks.
+  # Make sure you have an Environment named 'Dev' created in Azure DevOps Pipelines -> Environments.
+  # You would configure approvals on the 'Dev' Environment itself, not in the YAML here.
+  # For production, you'd typically have a separate stage linked to a 'Production' environment.
+  # For demonstration, assuming 'Dev' environment needs approval.
   jobs:
-  - job: Apply
+  - deployment: ApplyDeploymentJob
     displayName: 'Apply Terraform Changes'
-    environment: 'Dev'
+    environment: 'Dev' # Link this deployment job to the 'Dev' Azure DevOps Environment
     strategy:
       runOnce:
         deploy:
-        steps:
-        - download: current
-          artifact: tfplan
-        # Downloads the tfplan.out file from the previous stage
+          steps:
+          - download: current
+            artifact: tfplan
+            displayName: 'Download Terraform Plan Artifact'
+            # Downloads the tfplan.out file from the previous stage to $(Pipeline.Workspace)/tfplan/tfplan.out
 
-        - task: TerraformInstaller@1
-          displayName: 'Install Terraform'
-          inputs:
-            terraformVersion: 'latest'
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: 'latest'
 
-        - task: TerraformTaskV4@4
-          displayName: 'Terraform Init (for apply stage)'
-          inputs:
-            provider: 'azurerm'
-            command: 'init'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            backendServiceArm: '$(azureServiceConnection)'
-            backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
-            backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
-            backendAzureRmContainerName: '$(backendContainerName)'
-            backendAzureRmKey: '$(backendKey)'
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform Init (for apply stage)'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)' # Init in the context of the downloaded files
+              backendServiceArm: '$(azureServiceConnection)'
+              backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
+              backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
+              backendAzureRmContainerName: '$(backendContainerName)'
+              backendAzureRmKey: '$(backendKey)'
    
-        - task: TerraformTaskV4@4
-          displayName: 'Terraform Plan (for apply stage)'
-          inputs:
-            provider: 'azurerm'
-            command: 'plan'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            environmentServiceNameAzureRM: '$(azureServiceConnection)'
-            commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+          # IMPORTANT: Do NOT run 'terraform plan' again here if you want to apply the artifact.
+          # The purpose of the artifact is to ensure the plan remains unchanged from the 'plan' stage.
+          # If you run plan again, it might differ from the reviewed plan.
+          # - task: TerraformTaskV4@4
+          #   displayName: 'Terraform Plan (for apply stage)'
+          #   inputs:
+          #     provider: 'azurerm'
+          #     command: 'plan'
+          #     workingDirectory: '$(System.DefaultWorkingDirectory)'
+          #     environmentServiceNameAzureRM: '$(azureServiceConnection)'
+          #     commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
 
-              #- publish: $(System.DefaultWorkingDirectory)/tfplan.out
-              #artifact: tfplan
-
-        - task: TerraformTaskV4@4
-          displayName: 'Terraform Apply'
-          inputs:
-            provider: 'azurerm'
-            command: 'apply'
-            workingDirectory: '$(System.DefaultWorkingDirectory)'
-            environmentServiceNameAzureRM: '$(azureServiceConnection)'
-            commandOptions: '$(System.DefaultWorkingDirectory)/tfplan.out' # Apply the planned changes
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform Apply'
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)' # Apply from the working directory
+              environmentServiceNameAzureRM: '$(azureServiceConnection)'
+              # Point to the downloaded tfplan.out artifact
+              commandOptions: '$(Pipeline.Workspace)/tfplan/tfplan.out' 
+              # Ensure the path is correct. 'tfplan' is the artifact name, then 'tfplan.out' is the file inside.
