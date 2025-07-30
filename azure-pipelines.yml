@@ -23,7 +23,7 @@ variables:
   # For persistent environments (Dev, Prod), consider using fixed names here
   # or environment-specific variable groups rather than dynamic names like Build.BuildId.
   # For this example, if you want a new RG for each build, keep this.
-  resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run (e.g., for ephemeral testing)
+  #resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run (e.g., for ephemeral testing)
   resourceGroupLocation: 'centralindia'
   environmentTag: 'dev' # Example tag for your resources
 

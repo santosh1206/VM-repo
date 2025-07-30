@@ -43,3 +43,8 @@ resource "azurerm_resource_group" "example2" {
     ManagedBy   = "Terraform"
   }
 }
+
+resource "random_pet" "prefix" {
+  prefix = var.prefix
+  length = 1
+}
