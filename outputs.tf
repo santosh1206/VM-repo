@@ -1,9 +1,9 @@
 output "resource_group_id" {
   description = "The ID of the created Resource Group."
-  value       = azurerm_resource_group.example1.id
+  value       = azurerm_resource_group.example1[*].name
 }
 
 output "resource_group_location" {
   description = "The location of the created Resource Group."
-  value       = azurerm_resource_group.example1.location
+  value       = azurerm_resource_group.example1[*].location
 }
