@@ -17,7 +17,7 @@ variables:
 
   # Variables for your Azure Resource Group
   # These can be overridden by variable groups or at runtime
-  resourceGroupName: 'my-terraform-rg-22' # Unique name for each run
+  resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run
   resourceGroupLocation: 'centralindia'
   environmentTag: 'dev'
 
@@ -74,6 +74,9 @@ stages:
   displayName: 'Terraform Apply'
   dependsOn: TerraformPlan # This stage runs only after the Plan stage
   condition: succeeded() # Only run if the previous stage succeeded
+  # Link to the 'Production' Environment.
+  # This is where your production approval will be enforced.
+  environment: 'Dev'
   jobs:
   - job: Apply
     displayName: 'Apply Terraform Changes'
