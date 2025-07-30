@@ -34,15 +34,15 @@ resource "azurerm_resource_group" "example1" {
   }
 }
 
-# Create an Azure Resource Group 2
-resource "azurerm_resource_group" "example2" {
-  name     = "${random_pet.prefix.id}-rg"
-  location = var.location
-  tags = {
-    Environment = var.environment
-    ManagedBy   = "Terraform"
-  }
-}
+## Create an Azure Resource Group 2
+#resource "azurerm_resource_group" "example2" {
+#  name     = "${random_pet.prefix.id}-rg"
+#  location = var.location
+#  tags = {
+ #   Environment = var.environment
+ #   ManagedBy   = "Terraform"
+#  }
+#}
 
 resource "random_pet" "prefix" {
   prefix = var.prefix
