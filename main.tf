@@ -26,7 +26,7 @@ provider "azurerm" {
 
 # Create an Azure Resource Group 1
 resource "azurerm_resource_group" "example1" {
-  count    = 3
+  count    = 5
   name     = "${random_pet.prefix.id}-rg-${count.index}"
   location = var.location
   tags = {
