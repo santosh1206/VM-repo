@@ -84,46 +84,45 @@ stages:
     strategy:
       runOnce:
         deploy:
-          steps:
-    steps:
-    - task: TerraformInstaller@1
-      displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: 'latest'
+        steps:
+        - download: current
+          artifact: tfplan
+        # Downloads the tfplan.out file from the previous stage
 
-    - download: current
-      artifact: tfplan
-      # Downloads the tfplan.out file from the previous stage
+        - task: TerraformInstaller@1
+          displayName: 'Install Terraform'
+          inputs:
+            terraformVersion: 'latest'
 
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform Init (for apply stage)'
-      inputs:
-        provider: 'azurerm'
-        command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)'
-        backendServiceArm: '$(azureServiceConnection)'
-        backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
-        backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
-        backendAzureRmContainerName: '$(backendContainerName)'
-        backendAzureRmKey: '$(backendKey)'
+        - task: TerraformTaskV4@4
+          displayName: 'Terraform Init (for apply stage)'
+          inputs:
+            provider: 'azurerm'
+            command: 'init'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            backendServiceArm: '$(azureServiceConnection)'
+            backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
+            backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
+            backendAzureRmContainerName: '$(backendContainerName)'
+            backendAzureRmKey: '$(backendKey)'
    
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform Plan (for apply stage)'
-      inputs:
-        provider: 'azurerm'
-        command: 'plan'
-        workingDirectory: '$(System.DefaultWorkingDirectory)'
-        environmentServiceNameAzureRM: '$(azureServiceConnection)'
-        commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+        - task: TerraformTaskV4@4
+          displayName: 'Terraform Plan (for apply stage)'
+          inputs:
+            provider: 'azurerm'
+            command: 'plan'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            environmentServiceNameAzureRM: '$(azureServiceConnection)'
+            commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
 
-    #- publish: $(System.DefaultWorkingDirectory)/tfplan.out
-      #artifact: tfplan
+              #- publish: $(System.DefaultWorkingDirectory)/tfplan.out
+              #artifact: tfplan
 
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform Apply'
-      inputs:
-        provider: 'azurerm'
-        command: 'apply'
-        workingDirectory: '$(System.DefaultWorkingDirectory)'
-        environmentServiceNameAzureRM: '$(azureServiceConnection)'
-        commandOptions: '$(System.DefaultWorkingDirectory)/tfplan.out' # Apply the planned changes
+        - task: TerraformTaskV4@4
+          displayName: 'Terraform Apply'
+          inputs:
+            provider: 'azurerm'
+            command: 'apply'
+            workingDirectory: '$(System.DefaultWorkingDirectory)'
+            environmentServiceNameAzureRM: '$(azureServiceConnection)'
+            commandOptions: '$(System.DefaultWorkingDirectory)/tfplan.out' # Apply the planned changes
