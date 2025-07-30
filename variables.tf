@@ -14,3 +14,9 @@ variable "environment" {
   type        = string
   default     = "dev" # Default environment, can be overridden
 }
+
+variable "prefix" {
+  type        = string
+  default     = "trainingdev"
+  description = "Prefix of the resource name"
+}

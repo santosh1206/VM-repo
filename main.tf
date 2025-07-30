@@ -5,6 +5,11 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~>3.0" # Use a suitable version
     }
+
+    random = {
+      source = "hashicorp/random"
+      version = "~> 3.0" # Use an appropriate version
+    }
   }
 
   backend "azurerm" {
@@ -19,9 +24,19 @@ provider "azurerm" {
   features {}
 }
 
-# Create an Azure Resource Group
-resource "azurerm_resource_group" "example" {
-  name     = var.resource_group_name
+# Create an Azure Resource Group 1
+resource "azurerm_resource_group" "example1" {
+  name     = ${random_pet.prefix.id}-rg
+  location = var.location
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Create an Azure Resource Group 2
+resource "azurerm_resource_group" "example 2" {
+  name     = ${random_pet.prefix.id}-rg
   location = var.location
   tags = {
     Environment = var.environment
