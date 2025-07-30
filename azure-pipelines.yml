@@ -9,7 +9,7 @@ pool:
 
 variables:
   # Name of your Azure DevOps Service Connection
-  azureServiceConnection: 'devopstoazure'
+  azureServiceConnection: 'Training-subscription-connection'
   
   # Terraform backend storage details (must exist in Azure before pipeline runs)
   # IMPORTANT: Ensure these resources (RG, Storage Account, Container) are pre-created
