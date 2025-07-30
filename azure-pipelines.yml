@@ -76,10 +76,15 @@ stages:
   condition: succeeded() # Only run if the previous stage succeeded
   # Link to the 'Production' Environment.
   # This is where your production approval will be enforced.
-  environment: 'Dev'
+  #environment: 'Dev'
   jobs:
   - job: Apply
     displayName: 'Apply Terraform Changes'
+    environment: 'Dev'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
     steps:
     - task: TerraformInstaller@1
       displayName: 'Install Terraform'
