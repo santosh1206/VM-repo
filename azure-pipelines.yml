@@ -1,146 +1,212 @@
 # azure-pipelines.yml
-trigger:
-  - main # Trigger the pipeline on changes to the 'main' branch
+# This pipeline deploys different types of Azure resources
+# into different resource groups using Terraform modules.
 
-pool:
-  name: 'myazurevm' # Use a self-hosted agent pool named 'myazurevm'
-  # If using a Microsoft-hosted agent, use:
-  # vmImage: 'ubuntu-latest' # or 'windows-latest'
+trigger:
+- main # Trigger the pipeline on changes to the main branch
 
 variables:
+  # Define the path to your Terraform code
+  terraformDirectory: '$(Build.SourcesDirectory)/terraform'
   # Name of your Azure DevOps Service Connection
   azureServiceConnection: 'Training-subscription-connection'
   
-  # Terraform backend storage details (must exist in Azure before pipeline runs)
-  # IMPORTANT: Ensure these resources (RG, Storage Account, Container) are pre-created
-  # and your service connection has appropriate permissions.
-  backendResourceGroupName: 'tfstate-rg'
+  # Azure Backend Storage Account details for Terraform state
   backendStorageAccountName: 'tfstatestoragefree'
   backendContainerName: 'tfstate'
-  backendKey: 'terraform.tfstate'
-
-  # Variables for your Azure Resource Group
-  # For persistent environments (Dev, Prod), consider using fixed names here
-  # or environment-specific variable groups rather than dynamic names like Build.BuildId.
-  # For this example, if you want a new RG for each build, keep this.
-  #resourceGroupName: 'my-terraform-rg-$(Build.BuildId)' # Unique name for each run (e.g., for ephemeral testing)
-  resourceGroupLocation: 'centralindia'
-  environmentTag: 'dev' # Example tag for your resources
+  network_rg_name: qanetwork-rg
+  storage_rg_name: qastorage-rg
+  webapp_rg_name: qawebapp-rg
+  location: southindia
 
 stages:
-- stage: TerraformPlan
-  displayName: 'Terraform Plan'
+- stage: DeployInfrastructure
+  displayName: 'Deploy Azure Infrastructure'
   jobs:
-  - job: Plan
-    displayName: 'Run Terraform Plan'
+  - job: DeployNetwork
+    displayName: 'Deploy Network Resources (rg-network-demo)'
+    pool:
+      name: 'myazurevm' # Use a self-hosted agent pool named 'myazurevm'
+    
     steps:
+    - checkout: self
+
     - task: TerraformInstaller@1
       displayName: 'Install Terraform'
       inputs:
-        terraformVersion: 'latest' # Or a specific version like '1.5.7'
+        terraformVersion: 'latest'
 
-    # This step is commented out as backend resources are typically pre-created.
-    # If you still want to include it, ensure your service connection has permissions
-    # to create resource groups, storage accounts, and containers.
-    # - task: AzureCLI@2
-    #   displayName: 'Set up Azure Backend (if not already done)'
-    #   inputs:
-    #     azureSubscription: '$(azureServiceConnection)'
-    #     scriptType: 'bash'
-    #     scriptLocation: 'inlineScript'
-    #     inlineScript: |
-    #       az group create --name $(backendResourceGroupName) --location "$(resourceGroupLocation)" --output none --only-show-errors || true
-    #       az storage account create --name $(backendStorageAccountName) --resource-group $(backendResourceGroupName) --sku Standard_LRS --encryption-services blob --output none --only-show-errors || true
-    #       az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --output none --only-show-errors || true
-    #   # '|| true' allows the step to succeed even if the resource already exists (e.g., 'already exists' error).
-
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform Init'
+    - task: AzureCLI@2
+      displayName: 'Set up Terraform Backend Environment Variables for Network'
       inputs:
-        provider: 'azurerm'
-        command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)' # Path to your Terraform files (e.g., where main.tf is)
-        backendServiceArm: '$(azureServiceConnection)'
-        backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
-        backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
-        backendAzureRmContainerName: '$(backendContainerName)'
-        backendAzureRmKey: '$(backendKey)'
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az group create --name $(network_rg_name) --location $(location) || true
+          az storage account create --name $(backendStorageAccountName) --resource-group $(network_rg_name) --location $(location) --sku Standard_LRS || true
+          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
 
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform Plan'
+          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(network_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
+          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
+          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
+          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
+
+    # --- CORRECTED: Use `script` with multiline `|` ---
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(network_rg_name)" \
+          -backend-config="storage_account_name=$(backendStorageAccountName)" \
+          -backend-config="container_name=$(backendContainerName)" \
+          -backend-config="key=network.tfstate" \
+          -input=false
+      displayName: 'Terraform Init (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    # --- CORRECTED: `script` for single-line commands is also cleaner ---
+    - script: 'terraform plan -input=false -out=network.tfplan'
+      displayName: 'Terraform Plan (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    - script: 'terraform apply -input=false network.tfplan'
+      displayName: 'Terraform Apply (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+
+  - job: DeployStorage
+    displayName: 'Deploy Storage Resources (rg-storage-demo)'
+    dependsOn: DeployNetwork
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+    - checkout: self
+    - task: TerraformInstaller@1
+      displayName: 'Install Terraform'
       inputs:
-        provider: 'azurerm'
-        command: 'plan'
-        workingDirectory: '$(System.DefaultWorkingDirectory)'
-        environmentServiceNameAzureRM: '$(azureServiceConnection)'
-        # Pass variables to Terraform using -var flags
-        commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+        terraformVersion: 'latest'
 
-    # Publish the generated plan file as an artifact
-    - publish: $(System.DefaultWorkingDirectory)/tfplan.out
-      artifact: tfplan
-      displayName: 'Publish Terraform Plan Artifact'
+    - task: AzureCLI@2
+      displayName: 'Set up Terraform Backend Environment Variables for Storage'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az group create --name $(storage_rg_name) --location $(location) || true
+          az storage account create --name $(backendStorageAccountName) --resource-group $(storage_rg_name) --location $(location) --sku Standard_LRS || true
+          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
 
-- stage: TerraformApply
-  displayName: 'Terraform Apply'
-  dependsOn: TerraformPlan # This stage runs only after the Plan stage
-  condition: succeeded('TerraformPlan') # Only run if the previous stage (TerraformPlan) succeeded
-  
-  # The 'environment' keyword links this stage to an Azure DevOps Environment.
-  # This is where you configure pre-deployment approvals and checks.
-  # Make sure you have an Environment named 'Dev' created in Azure DevOps Pipelines -> Environments.
-  # You would configure approvals on the 'Dev' Environment itself, not in the YAML here.
-  # For production, you'd typically have a separate stage linked to a 'Production' environment.
-  # For demonstration, assuming 'Dev' environment needs approval.
-  jobs:
-  - deployment: ApplyDeploymentJob
-    displayName: 'Apply Terraform Changes'
-    environment: 'Dev' # Link this deployment job to the 'Dev' Azure DevOps Environment
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - download: current
-            artifact: tfplan
-            displayName: 'Download Terraform Plan Artifact'
-            # Downloads the tfplan.out file from the previous stage to $(Pipeline.Workspace)/tfplan/tfplan.out
+          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(storage_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
+          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
+          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
+          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
 
-          - task: TerraformInstaller@1
-            displayName: 'Install Terraform'
-            inputs:
-              terraformVersion: 'latest'
+    # --- CORRECTED: Use `script` with multiline `|` ---
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(storage_rg_name)" \
+          -backend-config="storage_account_name=$(backendStorageAccountName)" \
+          -backend-config="container_name=$(backendContainerName)" \
+          -backend-config="key=storage.tfstate" \
+          -input=false
+      displayName: 'Terraform Init (Storage)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
 
-          - task: TerraformTaskV4@4
-            displayName: 'Terraform Init (for apply stage)'
-            inputs:
-              provider: 'azurerm'
-              command: 'init'
-              workingDirectory: '$(System.DefaultWorkingDirectory)' # Init in the context of the downloaded files
-              backendServiceArm: '$(azureServiceConnection)'
-              backendAzureRmResourceGroupName: '$(backendResourceGroupName)'
-              backendAzureRmStorageAccountName: '$(backendStorageAccountName)'
-              backendAzureRmContainerName: '$(backendContainerName)'
-              backendAzureRmKey: '$(backendKey)'
-   
-          # IMPORTANT: Do NOT run 'terraform plan' again here if you want to apply the artifact.
-          # The purpose of the artifact is to ensure the plan remains unchanged from the 'plan' stage.
-          # If you run plan again, it might differ from the reviewed plan.
-          # - task: TerraformTaskV4@4
-          #   displayName: 'Terraform Plan (for apply stage)'
-          #   inputs:
-          #     provider: 'azurerm'
-          #     command: 'plan'
-          #     workingDirectory: '$(System.DefaultWorkingDirectory)'
-          #     environmentServiceNameAzureRM: '$(azureServiceConnection)'
-          #     commandOptions: '-out=$(System.DefaultWorkingDirectory)/tfplan.out -var="resource_group_name=$(resourceGroupName)" -var="location=$(resourceGroupLocation)" -var="environment=$(environmentTag)"'
+    - script: 'terraform plan -input=false -out=storage.tfplan'
+      displayName: 'Terraform Plan (Storage)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
 
-          - task: TerraformTaskV4@4
-            displayName: 'Terraform Apply'
-            inputs:
-              provider: 'azurerm'
-              command: 'apply'
-              workingDirectory: '$(System.DefaultWorkingDirectory)' # Apply from the working directory
-              environmentServiceNameAzureRM: '$(azureServiceConnection)'
-              # Point to the downloaded tfplan.out artifact
-              commandOptions: '$(Pipeline.Workspace)/tfplan/tfplan.out' 
-              # Ensure the path is correct. 'tfplan' is the artifact name, then 'tfplan.out' is the file inside.
+    - script: 'terraform apply -input=false storage.tfplan'
+      displayName: 'Terraform Apply (Storage)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+  - job: DeployWebApp
+    displayName: 'Deploy Web App Resources (rg-webapp-demo)'
+    dependsOn: DeployNetwork
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+    - checkout: self
+    - task: TerraformInstaller@1
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: 'latest'
+
+    - task: AzureCLI@2
+      displayName: 'Set up Terraform Backend Environment Variables for WebApp'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az group create --name $(webapp_rg_name) --location $(location) || true
+          az storage account create --name $(backendStorageAccountName) --resource-group $(webapp_rg_name) --location $(location) --sku Standard_LRS || true
+          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
+
+          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(webapp_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
+          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
+          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
+          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
+
+    # --- CORRECTED: Use `script` with multiline `|` ---
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(webapp_rg_name)" \
+          -backend-config="storage_account_name=$(backendStorageAccountName)" \
+          -backend-config="container_name=$(backendContainerName)" \
+          -backend-config="key=webapp.tfstate" \
+          -input=false
+      displayName: 'Terraform Init (Web App)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    - script: 'terraform plan -input=false -out=webapp.tfplan'
+      displayName: 'Terraform Plan (Web App)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    - script: 'terraform apply -input=false webapp.tfplan'
+      displayName: 'Terraform Apply (Web App)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
