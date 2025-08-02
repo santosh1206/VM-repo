@@ -14,10 +14,10 @@ variables:
   # Azure Backend Storage Account details for Terraform state
   backendStorageAccountName: 'tfstatestoragefree'
   backendContainerName: 'tfstate'
-  network_rg_name: qanetwork-rg
+  network_rg_name: tfstate-rg
   storage_rg_name: qastorage-rg
   webapp_rg_name: qawebapp-rg
-  location: southindia
+  location: centralindia
 
 stages:
 - stage: DeployInfrastructure

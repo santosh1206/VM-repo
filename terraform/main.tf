@@ -23,11 +23,11 @@ module "network" {
   source              = "./modules/network" # Path to the network module
   #resource_group_name = var.network_rg_name
   resource_group_name = "mynetwork-rg"
-  location            = "southindia"
+  location            = "centralindia"
   prefix              = "qa"
-  vnet_address_space  = ["10.0.0.0/16"]
+  vnet_address_space  = ["10.3.0.0/16"]
   subnets = {
-    "web" = "10.0.1.0/24"
-    "app" = "10.0.2.0/24"
+    "web" = "10.3.1.0/24"
+    "app" = "10.3.2.0/24"
   }
 }
