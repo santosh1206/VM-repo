@@ -1,0 +1,87 @@
+# azure-pipelines.yml
+# This pipeline deploys different types of Azure resources
+# into different resource groups using Terraform modules.
+
+trigger:
+- main # Trigger the pipeline on changes to the main branch
+
+variables:
+  # Define the path to your Terraform code
+  terraformDirectory: '$(Build.SourcesDirectory)/terraform'
+  # Name of your Azure DevOps Service Connection
+  azureServiceConnection: 'Training-subscription-connection'
+  
+  # Azure Backend Storage Account details for Terraform state
+  backendStorageAccountName: 'tfstatestoragefree'
+  backendContainerName: 'tfstate'
+  network_rg_name: tfstate-rg
+  storage_rg_name: qastorage-rg
+  webapp_rg_name: qawebapp-rg
+  location: centralindia
+
+stages:
+- stage: DeployInfrastructure
+  displayName: 'Deploy Azure Infrastructure'
+  jobs:
+  - job: DeployNetwork
+    displayName: 'Deploy Network Resources (rg-network-demo)'
+    pool:
+      name: 'myazurevm' # Use a self-hosted agent pool named 'myazurevm'
+    
+    steps:
+    - checkout: self
+
+    - task: TerraformInstaller@1
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: 'latest'
+
+    - task: AzureCLI@2
+      displayName: 'Set up Terraform Backend Environment Variables for Network'
+      inputs:
+        azureSubscription: '$(azureServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          #az group create --name $(network_rg_name) --location $(location) || true
+          #az storage account create --name $(backendStorageAccountName) --resource-group $(network_rg_name) --location $(location) --sku Standard_LRS || true
+          #az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
+
+          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(network_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
+          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
+          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
+          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
+
+    # --- CORRECTED: Use `script` with multiline `|` ---
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(network_rg_name)" \
+          -backend-config="storage_account_name=$(backendStorageAccountName)" \
+          -backend-config="container_name=$(backendContainerName)" \
+          -backend-config="key=network.tfstate" \
+          -input=false
+      displayName: 'Terraform Init (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    # --- CORRECTED: `script` for single-line commands is also cleaner ---
+    - script: 'terraform plan -input=false -out=network.tfplan'
+      displayName: 'Terraform Plan (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+    - script: 'terraform apply -input=false network.tfplan'
+      displayName: 'Terraform Apply (Network)'
+      workingDirectory: '$(terraformDirectory)'
+      env:
+        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
