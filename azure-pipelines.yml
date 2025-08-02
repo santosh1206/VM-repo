@@ -43,9 +43,9 @@ stages:
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
-          az group create --name $(network_rg_name) --location $(location) || true
-          az storage account create --name $(backendStorageAccountName) --resource-group $(network_rg_name) --location $(location) --sku Standard_LRS || true
-          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
+          #az group create --name $(network_rg_name) --location $(location) || true
+          #az storage account create --name $(backendStorageAccountName) --resource-group $(network_rg_name) --location $(location) --sku Standard_LRS || true
+          #az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
 
           ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(network_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
           echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
@@ -80,131 +80,6 @@ stages:
 
     - script: 'terraform apply -input=false network.tfplan'
       displayName: 'Terraform Apply (Network)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-
-  - job: DeployStorage
-    displayName: 'Deploy Storage Resources (rg-storage-demo)'
-    dependsOn: DeployNetwork
-    pool:
-      vmImage: 'ubuntu-latest'
-
-    steps:
-    - checkout: self
-    - task: TerraformInstaller@1
-      displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: 'latest'
-
-    - task: AzureCLI@2
-      displayName: 'Set up Terraform Backend Environment Variables for Storage'
-      inputs:
-        azureSubscription: '$(azureServiceConnection)'
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          az group create --name $(storage_rg_name) --location $(location) || true
-          az storage account create --name $(backendStorageAccountName) --resource-group $(storage_rg_name) --location $(location) --sku Standard_LRS || true
-          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
-
-          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(storage_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
-          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
-          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
-          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
-
-    # --- CORRECTED: Use `script` with multiline `|` ---
-    - script: |
-        terraform init \
-          -backend-config="resource_group_name=$(storage_rg_name)" \
-          -backend-config="storage_account_name=$(backendStorageAccountName)" \
-          -backend-config="container_name=$(backendContainerName)" \
-          -backend-config="key=storage.tfstate" \
-          -input=false
-      displayName: 'Terraform Init (Storage)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-    - script: 'terraform plan -input=false -out=storage.tfplan'
-      displayName: 'Terraform Plan (Storage)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-    - script: 'terraform apply -input=false storage.tfplan'
-      displayName: 'Terraform Apply (Storage)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-  - job: DeployWebApp
-    displayName: 'Deploy Web App Resources (rg-webapp-demo)'
-    dependsOn: DeployNetwork
-    pool:
-      vmImage: 'ubuntu-latest'
-
-    steps:
-    - checkout: self
-    - task: TerraformInstaller@1
-      displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: 'latest'
-
-    - task: AzureCLI@2
-      displayName: 'Set up Terraform Backend Environment Variables for WebApp'
-      inputs:
-        azureSubscription: '$(azureServiceConnection)'
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: |
-          az group create --name $(webapp_rg_name) --location $(location) || true
-          az storage account create --name $(backendStorageAccountName) --resource-group $(webapp_rg_name) --location $(location) --sku Standard_LRS || true
-          az storage container create --name $(backendContainerName) --account-name $(backendStorageAccountName) --auth-mode login || true
-
-          ARM_ACCESS_KEY=$(az storage account keys list --resource-group $(webapp_rg_name) --account-name $(backendStorageAccountName) --query "[0].value" -o tsv)
-          echo "##vso[task.setvariable variable=ARM_ACCESS_KEY;issecret=true]$ARM_ACCESS_KEY"
-          ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          echo "##vso[task.setvariable variable=ARM_SUBSCRIPTION_ID]$ARM_SUBSCRIPTION_ID"
-          ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
-          echo "##vso[task.setvariable variable=ARM_TENANT_ID]$ARM_TENANT_ID"
-
-    # --- CORRECTED: Use `script` with multiline `|` ---
-    - script: |
-        terraform init \
-          -backend-config="resource_group_name=$(webapp_rg_name)" \
-          -backend-config="storage_account_name=$(backendStorageAccountName)" \
-          -backend-config="container_name=$(backendContainerName)" \
-          -backend-config="key=webapp.tfstate" \
-          -input=false
-      displayName: 'Terraform Init (Web App)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-    - script: 'terraform plan -input=false -out=webapp.tfplan'
-      displayName: 'Terraform Plan (Web App)'
-      workingDirectory: '$(terraformDirectory)'
-      env:
-        ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
-        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-        ARM_TENANT_ID: $(ARM_TENANT_ID)
-
-    - script: 'terraform apply -input=false webapp.tfplan'
-      displayName: 'Terraform Apply (Web App)'
       workingDirectory: '$(terraformDirectory)'
       env:
         ARM_ACCESS_KEY: $(ARM_ACCESS_KEY)
