@@ -1,12 +1,5 @@
-output "resource_group_name" {
-  value = azurerm_resource_group.rg.name
-}
-
+## 4. Output
 output "public_ip_address" {
-  value = azurerm_windows_virtual_machine.main.public_ip_address
-}
-
-output "admin_password" {
-  sensitive = true
-  value     = azurerm_windows_virtual_machine.main.admin_password
+  description = "The public IP address of the deployed VM."
+  value       = azurerm_public_ip.pip.ip_address
 }
